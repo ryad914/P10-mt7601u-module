@@ -14,27 +14,37 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc kmod cpio flex bison wget curl \
-            gcc-aarch64-linux-gnu linux-libc-dev
+            gcc-aarch64-linux-gnu xz-utils
 
-      - name: Locate mt7601u in repo and set kernel root
+      - name: Prepare kernel folder
+        run: |
+          mkdir -p kernel_src
+
+      - name: Download Huawei Kernel Source (direct link)
+        run: |
+          # Téléchargement direct depuis Huawei (le lien que tu as fourni)
+          KERNEL_URL="https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide"
+          echo "Downloading kernel from $KERNEL_URL"
+          wget -O kernel.tar.gz "$KERNEL_URL" || (echo "wget failed, exit"; exit 1)
+          ls -lh kernel.tar.gz
+          # extraire dans kernel_src
+          tar -xzf kernel.tar.gz -C kernel_src --strip-components=1 || (echo "tar extract failed"; ls -la; exit 1)
+          echo "Kernel extracted to kernel_src/"
+          ls -la kernel_src | head -n 50
+
+      - name: Find mt7601u and set kernel root
         id: findpaths
         run: |
-          # Cherche le dossier mt7601u dans le repo
-          MTDIR=$(find . -type d -path "*/drivers/net/wireless/mediatek/mt7601u" -print -quit || true)
+          MTDIR=$(find kernel_src -type d -path "*/drivers/net/wireless/mediatek/mt7601u" -print -quit || true)
           if [ -z "$MTDIR" ]; then
-            echo "ERROR: mt7601u driver folder not found in repository"
-            ls -R . | sed -n '1,200p'
+            echo "ERROR: mt7601u not found in downloaded kernel"
+            ls -R kernel_src | head -n 200
             exit 1
           fi
-          # Détermine la racine du kernel (chemin avant /drivers/...)
           KROOT=$(echo "$MTDIR" | sed 's:/drivers/net/wireless/mediatek/mt7601u::')
-          if [ -z "$KROOT" ]; then
-            echo "ERROR: cannot determine kernel root"
-            exit 1
-          fi
           echo "mtpath=$MTDIR" >> $GITHUB_OUTPUT
           echo "kroot=$KROOT" >> $GITHUB_OUTPUT
-          echo "Found mt7601u: $MTDIR"
+          echo "Found mt7601u at $MTDIR"
           echo "Kernel root: $KROOT"
           ls -la "$KROOT" | head -n 50
 
@@ -48,23 +58,21 @@ jobs:
           echo "Using MT=$MT"
           cd "$KROOT"
 
-          # Si pas de Makefile (sécurité)
           if [ ! -f Makefile ]; then
             echo "ERROR: no top-level Makefile in kernel root ($KROOT)"
             ls -la
             exit 1
           fi
 
-          # Préparer une config minimale si aucune .config (essaie defconfig sinon)
+          # Si aucune config .config, essayer defconfig (peut ne pas correspondre exactement)
           if [ ! -f .config ]; then
-            echo "No .config found — trying defconfig (may not match exactly your phone kernel)"
+            echo "No .config found — trying defconfig"
             make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
           fi
 
-          # Compiler uniquement le module mt7601u
+          # Compiler seulement le module mt7601u
           make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$MT" modules
 
-          # Affiche l'endroit où se trouve le .ko
           echo "Built files in $MT:"
           ls -la "$MT" || true
 
