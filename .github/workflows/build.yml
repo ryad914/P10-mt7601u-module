@@ -14,7 +14,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential git wget unzip bc \
+        sudo apt-get install -y build-essential git wget bc \
           flex bison libssl-dev \
           libncurses5-dev libncursesw5-dev \
           gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -25,16 +25,17 @@ jobs:
     - name: Download Huawei P10 Kernel Source
       run: |
         cd kernel
-        wget "https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide" -O kernel.zip
-        unzip kernel.zip
-        rm kernel.zip
+        wget "https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide" -O kernel.tar.gz
+        tar -xvzf kernel.tar.gz
+        rm kernel.tar.gz
 
     - name: Build mt7601u module
       run: |
         cd kernel/Code_Opensource/kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        make O=out olddefconfig
+        # Charger la config par défaut du Kirin 960 (Huawei P10)
+        make kirin960_defconfig
         make O=out modules_prepare
         make -C . M=drivers/net/wireless/mediatek/mt7601u modules
 
