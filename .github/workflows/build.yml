@@ -5,61 +5,33 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc git wget curl gcc-aarch64-linux-gnu xz-utils
+          sudo apt-get install -y build-essential bc kmod cpio flex bison libssl-dev wget
 
-      - name: Prepare folders
+      - name: Prepare kernel source
         run: |
-          mkdir -p kernel_src
-
-      - name: Download Huawei Kernel Source
-        run: |
+          mkdir -p ~/kernel
+          cd ~/kernel
+          # Télécharge le kernel source Huawei P10 (met ton lien direct ici si besoin)
           wget -O kernel.tar.gz "https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide"
-          ls -lh kernel.tar.gz
-          tar -xzf kernel.tar.gz -C kernel_src --strip-components=1
-          ls -la kernel_src | head -n 50
+          tar -xzf kernel.tar.gz --strip-components=1
 
-      - name: Find mt7601u path
-        id: findpaths
+      - name: Build MT7601U module
         run: |
-          MTDIR=$(find kernel_src -type d -path "*/drivers/net/wireless/mediatek/mt7601u" -print -quit || true)
-          if [ -z "$MTDIR" ]; then
-            echo "mt7601u not found in kernel_src"
-            ls -R kernel_src | head -n 200
-            exit 1
-          fi
-          KROOT=$(echo "$MTDIR" | sed 's:/drivers/net/wireless/mediatek/mt7601u::')
-          echo "mtpath=$MTDIR" >> $GITHUB_OUTPUT
-          echo "kroot=$KROOT" >> $GITHUB_OUTPUT
-          echo "Found mt7601u at $MTDIR, kernel root $KROOT"
+          cd ~/kernel
+          # Adapter la config selon ton kernel (4.9.111 arm64)
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig || true
+          make M=drivers/net/wireless/mediatek/mt7601u modules
 
-      - name: Build module
-        run: |
-          set -e
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          MT="${{ steps.findpaths.outputs.mtpath }}"
-          KROOT="${{ steps.findpaths.outputs.kroot }}"
-          echo "MT=$MT"
-          echo "KROOT=$KROOT"
-          cd "$KROOT"
-          if [ ! -f .config ]; then
-            echo "Pas de .config trouvé ; essai avec defconfig (ça peut ne pas correspondre exactement à ton kernel)"
-            make defconfig
-          fi
-          make -j$(nproc) M="$MT" modules
-
-      - name: Upload mt7601u.ko artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload mt7601u.ko
+        uses: actions/upload-artifact@v4
         with:
-          name: mt7601u.ko
-          path: |
-            **/mt7601u.ko
+          name: mt7601u-ko
+          path: drivers/net/wireless/mediatek/mt7601u/mt7601u.ko
