@@ -13,25 +13,64 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc kmod cpio flex bison libssl-dev wget
+          sudo apt-get install -y build-essential bc kmod cpio flex bison wget curl \
+            gcc-aarch64-linux-gnu linux-libc-dev
 
-      - name: Prepare kernel source
+      - name: Locate mt7601u in repo and set kernel root
+        id: findpaths
         run: |
-          mkdir -p ~/kernel
-          cd ~/kernel
-          # Télécharge le kernel source Huawei P10 (met ton lien direct ici si besoin)
-          wget -O kernel.tar.gz "https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide"
-          tar -xzf kernel.tar.gz --strip-components=1
+          # Cherche le dossier mt7601u dans le repo
+          MTDIR=$(find . -type d -path "*/drivers/net/wireless/mediatek/mt7601u" -print -quit || true)
+          if [ -z "$MTDIR" ]; then
+            echo "ERROR: mt7601u driver folder not found in repository"
+            ls -R . | sed -n '1,200p'
+            exit 1
+          fi
+          # Détermine la racine du kernel (chemin avant /drivers/...)
+          KROOT=$(echo "$MTDIR" | sed 's:/drivers/net/wireless/mediatek/mt7601u::')
+          if [ -z "$KROOT" ]; then
+            echo "ERROR: cannot determine kernel root"
+            exit 1
+          fi
+          echo "mtpath=$MTDIR" >> $GITHUB_OUTPUT
+          echo "kroot=$KROOT" >> $GITHUB_OUTPUT
+          echo "Found mt7601u: $MTDIR"
+          echo "Kernel root: $KROOT"
+          ls -la "$KROOT" | head -n 50
 
-      - name: Build MT7601U module
+      - name: Build mt7601u module
+        env:
+          MT: ${{ steps.findpaths.outputs.mtpath }}
+          KROOT: ${{ steps.findpaths.outputs.kroot }}
         run: |
-          cd ~/kernel
-          # Adapter la config selon ton kernel (4.9.111 arm64)
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig || true
-          make M=drivers/net/wireless/mediatek/mt7601u modules
+          set -e
+          echo "Using KROOT=$KROOT"
+          echo "Using MT=$MT"
+          cd "$KROOT"
 
-      - name: Upload mt7601u.ko
+          # Si pas de Makefile (sécurité)
+          if [ ! -f Makefile ]; then
+            echo "ERROR: no top-level Makefile in kernel root ($KROOT)"
+            ls -la
+            exit 1
+          fi
+
+          # Préparer une config minimale si aucune .config (essaie defconfig sinon)
+          if [ ! -f .config ]; then
+            echo "No .config found — trying defconfig (may not match exactly your phone kernel)"
+            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          fi
+
+          # Compiler uniquement le module mt7601u
+          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$MT" modules
+
+          # Affiche l'endroit où se trouve le .ko
+          echo "Built files in $MT:"
+          ls -la "$MT" || true
+
+      - name: Upload mt7601u.ko (if exists)
         uses: actions/upload-artifact@v4
         with:
           name: mt7601u-ko
-          path: drivers/net/wireless/mediatek/mt7601u/mt7601u.ko
+          path: |
+            **/mt7601u.ko
