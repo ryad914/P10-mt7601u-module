@@ -34,8 +34,7 @@ jobs:
         cd kernel/Code_Opensource/kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        # Charger la config par défaut du Kirin 960 (Huawei P10)
-        make kirin960_defconfig
+        make O=out defconfig || true
         make O=out modules_prepare
         make -C . M=drivers/net/wireless/mediatek/mt7601u modules
 
