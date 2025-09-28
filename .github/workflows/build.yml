@@ -1,0 +1,65 @@
+name: Build MT7601U Module
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc git wget curl gcc-aarch64-linux-gnu xz-utils
+
+      - name: Prepare folders
+        run: |
+          mkdir -p kernel_src
+
+      - name: Download Huawei Kernel Source
+        run: |
+          wget -O kernel.tar.gz "https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide"
+          ls -lh kernel.tar.gz
+          tar -xzf kernel.tar.gz -C kernel_src --strip-components=1
+          ls -la kernel_src | head -n 50
+
+      - name: Find mt7601u path
+        id: findpaths
+        run: |
+          MTDIR=$(find kernel_src -type d -path "*/drivers/net/wireless/mediatek/mt7601u" -print -quit || true)
+          if [ -z "$MTDIR" ]; then
+            echo "mt7601u not found in kernel_src"
+            ls -R kernel_src | head -n 200
+            exit 1
+          fi
+          KROOT=$(echo "$MTDIR" | sed 's:/drivers/net/wireless/mediatek/mt7601u::')
+          echo "mtpath=$MTDIR" >> $GITHUB_OUTPUT
+          echo "kroot=$KROOT" >> $GITHUB_OUTPUT
+          echo "Found mt7601u at $MTDIR, kernel root $KROOT"
+
+      - name: Build module
+        run: |
+          set -e
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          MT="${{ steps.findpaths.outputs.mtpath }}"
+          KROOT="${{ steps.findpaths.outputs.kroot }}"
+          echo "MT=$MT"
+          echo "KROOT=$KROOT"
+          cd "$KROOT"
+          if [ ! -f .config ]; then
+            echo "Pas de .config trouvé ; essai avec defconfig (ça peut ne pas correspondre exactement à ton kernel)"
+            make defconfig
+          fi
+          make -j$(nproc) M="$MT" modules
+
+      - name: Upload mt7601u.ko artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: mt7601u.ko
+          path: |
+            **/mt7601u.ko
