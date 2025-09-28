@@ -1,4 +1,4 @@
-name: Build MT7601U Module
+name: build-mt7601u
 
 on:
   workflow_dispatch:
@@ -6,79 +6,40 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc kmod cpio flex bison wget curl \
-            gcc-aarch64-linux-gnu xz-utils
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential git wget unzip bc \
+          flex bison libssl-dev \
+          libncurses5-dev libncursesw5-dev \
+          gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Prepare kernel folder
-        run: |
-          mkdir -p kernel_src
+    - name: Prepare kernel folder
+      run: mkdir -p kernel
 
-      - name: Download Huawei Kernel Source (direct link)
-        run: |
-          # Téléchargement direct depuis Huawei (le lien que tu as fourni)
-          KERNEL_URL="https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide"
-          echo "Downloading kernel from $KERNEL_URL"
-          wget -O kernel.tar.gz "$KERNEL_URL" || (echo "wget failed, exit"; exit 1)
-          ls -lh kernel.tar.gz
-          # extraire dans kernel_src
-          tar -xzf kernel.tar.gz -C kernel_src --strip-components=1 || (echo "tar extract failed"; ls -la; exit 1)
-          echo "Kernel extracted to kernel_src/"
-          ls -la kernel_src | head -n 50
+    - name: Download Huawei P10 Kernel Source
+      run: |
+        cd kernel
+        wget "https://download-c1.huawei.com/download/downloadCenter?downloadId=B87082E9CE997D8645041978C5217002&version=F15A20CE67D1FE8501BD721465A67ACC&siteCode=worldwide" -O kernel.zip
+        unzip kernel.zip
+        rm kernel.zip
 
-      - name: Find mt7601u and set kernel root
-        id: findpaths
-        run: |
-          MTDIR=$(find kernel_src -type d -path "*/drivers/net/wireless/mediatek/mt7601u" -print -quit || true)
-          if [ -z "$MTDIR" ]; then
-            echo "ERROR: mt7601u not found in downloaded kernel"
-            ls -R kernel_src | head -n 200
-            exit 1
-          fi
-          KROOT=$(echo "$MTDIR" | sed 's:/drivers/net/wireless/mediatek/mt7601u::')
-          echo "mtpath=$MTDIR" >> $GITHUB_OUTPUT
-          echo "kroot=$KROOT" >> $GITHUB_OUTPUT
-          echo "Found mt7601u at $MTDIR"
-          echo "Kernel root: $KROOT"
-          ls -la "$KROOT" | head -n 50
+    - name: Build mt7601u module
+      run: |
+        cd kernel/Code_Opensource/kernel
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        make O=out olddefconfig
+        make O=out modules_prepare
+        make -C . M=drivers/net/wireless/mediatek/mt7601u modules
 
-      - name: Build mt7601u module
-        env:
-          MT: ${{ steps.findpaths.outputs.mtpath }}
-          KROOT: ${{ steps.findpaths.outputs.kroot }}
-        run: |
-          set -e
-          echo "Using KROOT=$KROOT"
-          echo "Using MT=$MT"
-          cd "$KROOT"
-
-          if [ ! -f Makefile ]; then
-            echo "ERROR: no top-level Makefile in kernel root ($KROOT)"
-            ls -la
-            exit 1
-          fi
-
-          # Si aucune config .config, essayer defconfig (peut ne pas correspondre exactement)
-          if [ ! -f .config ]; then
-            echo "No .config found — trying defconfig"
-            make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
-          fi
-
-          # Compiler seulement le module mt7601u
-          make -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M="$MT" modules
-
-          echo "Built files in $MT:"
-          ls -la "$MT" || true
-
-      - name: Upload mt7601u.ko (if exists)
-        uses: actions/upload-artifact@v4
-        with:
-          name: mt7601u-ko
-          path: |
-            **/mt7601u.ko
+    - name: Upload mt7601u.ko
+      uses: actions/upload-artifact@v4
+      with:
+        name: mt7601u-ko
+        path: kernel/Code_Opensource/kernel/drivers/net/wireless/mediatek/mt7601u/mt7601u.ko
