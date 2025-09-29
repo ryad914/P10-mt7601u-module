@@ -34,9 +34,12 @@ jobs:
         cd kernel/Code_Opensource/kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        make O=out defconfig || true
-        make O=out modules_prepare
-        make -C . M=drivers/net/wireless/mediatek/mt7601u modules
+        make modules_prepare
+        make -C . M=drivers/net/wireless/mediatek/mt7601u
+
+    - name: List compiled modules
+      run: |
+        find kernel/Code_Opensource/kernel -name "*.ko" || echo "No modules found"
 
     - name: Upload mt7601u.ko
       uses: actions/upload-artifact@v4
