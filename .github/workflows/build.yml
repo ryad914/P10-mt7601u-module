@@ -29,17 +29,22 @@ jobs:
         tar -xvzf kernel.tar.gz
         rm kernel.tar.gz
 
-    - name: Fake minimal .config
+    - name: Create minimal .config
       run: |
         cd kernel/Code_Opensource/kernel
-        echo "CONFIG_MT7601U=m" > .config
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        make defconfig
+        echo "CONFIG_MT7601U=m" >> .config
+        make olddefconfig
+        make prepare
 
     - name: Build mt7601u module
       run: |
         cd kernel/Code_Opensource/kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        make -C . M=drivers/net/wireless/mediatek/mt7601u
+        make M=drivers/net/wireless/mediatek/mt7601u modules
 
     - name: List compiled modules
       run: |
