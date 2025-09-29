@@ -29,6 +29,17 @@ jobs:
         tar -xvzf kernel.tar.gz
         rm kernel.tar.gz
 
+    - name: Create minimal .config
+      run: |
+        cd kernel/Code_Opensource/kernel
+        export ARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        # génère un defconfig générique si possible
+        make defconfig || true
+        # active le driver MT7601U comme module
+        echo "CONFIG_MT7601U=m" >> .config
+        make olddefconfig
+
     - name: Build mt7601u module
       run: |
         cd kernel/Code_Opensource/kernel
