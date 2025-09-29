@@ -34,10 +34,7 @@ jobs:
         cd kernel/Code_Opensource/kernel
         export ARCH=arm64
         export CROSS_COMPILE=aarch64-linux-gnu-
-        # Générer une config générique ARM64
-        make defconfig
         make modules_prepare
-        # Compiler uniquement le module mt7601u
         make -C . M=drivers/net/wireless/mediatek/mt7601u modules
 
     - name: List compiled modules
