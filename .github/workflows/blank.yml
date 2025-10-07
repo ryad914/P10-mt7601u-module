@@ -1,0 +1,30 @@
+name: Build mt7601u Module
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up cross-compilation environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu make
+
+      - name: Compile mt7601u module
+        run: |
+          cd mt7601u
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-android-
+
+      - name: Upload compiled module
+        uses: actions/upload-artifact@v2
+        with:
+          name: mt7601u-module
+          path: mt7601u/mt7601u.ko
