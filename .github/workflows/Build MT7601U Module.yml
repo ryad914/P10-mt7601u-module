@@ -1,0 +1,53 @@
+name: Build MT7601U Module (Light)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc \
+            flex bison libssl-dev \
+            libncurses5-dev libncursesw5-dev \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu wget
+
+      - name: Prepare minimal kernel folder
+        run: mkdir -p kernel_headers
+
+      - name: Download Huawei P10 kernel headers
+        run: |
+          cd kernel_headers
+          wget -O headers.tar.gz "https://github.com/Coconutat/android_kernel_huawei_hi3660_emui9.1.0_KernelSU/releases/download/headers/headers.tar.gz"
+          tar -xzf headers.tar.gz --strip-components=1
+          rm headers.tar.gz
+
+      - name: Prepare modules
+        run: |
+          cd kernel_headers
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make modules_prepare
+
+      - name: Build MT7601U module
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -C kernel_headers M=drivers/net/wireless/mediatek/mt7601u modules
+
+      - name: List compiled modules
+        run: |
+          find kernel_headers -name "*.ko" || echo "No modules found"
+
+      - name: Upload mt7601u.ko
+        uses: actions/upload-artifact@v4
+        with:
+          name: mt7601u-ko
+          path: kernel_headers/drivers/net/wireless/mediatek/mt7601u/mt7601u.ko
