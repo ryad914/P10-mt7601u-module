@@ -1,0 +1,48 @@
+name: Build MT7601U Module
+
+# Permet de lancer manuellement le workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      ARCH: arm64
+      CROSS_COMPILE: aarch64-linux-gnu-  # ou ton cross-compileur pour ARM64
+      KERNEL_VERSION: "5.10"             # remplace par la version exacte de ton P10
+
+    steps:
+      # 1️⃣ Récupérer le code du dépôt
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2️⃣ Installer les dépendances nécessaires
+      - name: Install build tools
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential bc libncurses-dev bison flex wget
+
+      # 3️⃣ Télécharger les headers du kernel (modifie le lien pour ton kernel exact)
+      - name: Download kernel headers
+        run: |
+          wget -O kernel_headers.tar.gz https://github.com/<TON_DEPOT_KERNEL>/archive/refs/heads/main.tar.gz
+          mkdir -p kernel_headers
+          tar -xzf kernel_headers.tar.gz -C kernel_headers --strip-components=1
+
+      # 4️⃣ Compiler le module MT7601U
+      - name: Build MT7601U module
+        run: |
+          export KERNEL_DIR=$(pwd)/kernel_headers
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          cd drivers/net/wireless/mediatek/mt7601u/
+          make -C $KERNEL_DIR M=$(pwd) modules
+
+      # 5️⃣ Télécharger le module compilé
+      - name: Upload compiled module
+        uses: actions/upload-artifact@v3
+        with:
+          name: mt7601u-module
+          path: drivers/net/wireless/mediatek/mt7601u/mt7601u.ko
